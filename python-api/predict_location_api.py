@@ -44,7 +44,7 @@ def process_geojson(geojson_path):
     
     return pd.DataFrame(data)
 
-geojson_file = os.path.join(base_path, 'my_points.geojson')
+geojson_file = os.path.join(base_path, 'ml', 'my_points.geojson')
 df_all = process_geojson(geojson_file)
 settlements = df_all[df_all['fclass'] == 'settlement'] if not df_all.empty else pd.DataFrame()
 settlement_coords = list(zip(settlements['latitude'], settlements['longitude'])) if not settlements.empty else []
@@ -105,6 +105,63 @@ def generate_points_in_circle(center_lat, center_lng, radius_km, num_points=20):
     
     return points
 
+# --- Prediction Logic (now a single, unified function) ---
+def predict_locations_logic(locations: List[Location]):
+    if model is None or feature_columns is None:
+        # Fallback logic if the model is not loaded
+        mock_results = []
+        for loc in locations:
+            lat_factor = (loc.latitude % 1) * 100
+            lng_factor = (loc.longitude % 1) * 100
+            suitable = (lat_factor + lng_factor) % 3 > 1  
+            confidence = round(random.uniform(0.6, 0.9), 2)
+            
+            mock_results.append({
+                "latitude": loc.latitude,
+                "longitude": loc.longitude,
+                "suitable": suitable,
+                "confidence": confidence
+            })
+        return mock_results
+    
+    try:
+        new_df = pd.DataFrame([loc.dict() for loc in locations])
+        
+        # Calculate near_settlement
+        near_settlement = []
+        for _, row in new_df.iterrows():
+            point_coords = (row['latitude'], row['longitude'])
+            is_near = any(
+                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
+                for s_coords in settlement_coords
+            ) if settlement_coords else False
+            near_settlement.append(is_near)
+        
+        new_df['near_settlement'] = near_settlement
+        
+        # One-hot encode and align columns
+        X_new = pd.get_dummies(new_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
+        X_new = X_new.reindex(columns=feature_columns, fill_value=0)
+        
+        # Predict
+        predictions = model.predict(X_new)
+        probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
+        
+        # Format response
+        results = []
+        for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
+            results.append({
+                "latitude": new_df.iloc[i]['latitude'],
+                "longitude": new_df.iloc[i]['longitude'],
+                "suitable": bool(pred),
+                "confidence": round(float(prob[1]), 2) if prob[1] is not None else None
+            })
+        
+        return results
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
 # --- API Endpoints ---
 @app.post("/predict")
 def predict_locations_simple(locations: List[Location]):
@@ -135,7 +192,7 @@ def diagnose_model(request: CircleRequest):
     # Check if files exist
     model_file = os.path.join(base_path, 'store_placement_model.joblib')
     features_file = os.path.join(base_path, 'feature_columns.joblib')
-    geojson_file = os.path.join(base_path, 'my_points.geojson')
+    geojson_file = os.path.join(base_path, 'ml', 'my_points.geojson')
     
     diagnosis = {
         "files_exist": {
@@ -223,49 +280,6 @@ def diagnose_model(request: CircleRequest):
     
     return diagnosis
 
-def predict_locations_logic(locations: List[Location]):
-    if model is None or feature_columns is None:
-        raise HTTPException(status_code=500, detail="Model not loaded properly")
-    
-    try:
-        new_df = pd.DataFrame([loc.dict() for loc in locations])
-        
-        # Calculate near_settlement
-        near_settlement = []
-        for _, row in new_df.iterrows():
-            point_coords = (row['latitude'], row['longitude'])
-            is_near = any(
-                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
-                for s_coords in settlement_coords
-            ) if settlement_coords else False
-            near_settlement.append(is_near)
-        
-        new_df['near_settlement'] = near_settlement
-        
-        # One-hot encode and align columns
-        X_new = pd.get_dummies(new_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
-        X_new = X_new.reindex(columns=feature_columns, fill_value=0)
-        
-        # Predict
-        predictions = model.predict(X_new)
-        probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
-        
-        # Format response
-        results = []
-        for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
-            results.append({
-                "latitude": new_df.iloc[i]['latitude'],
-                "longitude": new_df.iloc[i]['longitude'],
-                "suitable": bool(pred),
-                "confidence": round(float(prob[1]), 2) if prob[1] is not None else None
-            })
-        
-        return results
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-# Temporary fix to test different fclass values
 @app.post("/predict-circle-varied")
 def predict_circle_varied(request: CircleRequest):
     """Test predictions with different fclass values to see if that affects results"""
@@ -456,63 +470,6 @@ def predict_debug(locations: List[Location]):
     
     except Exception as e:
         return {"error": str(e), "traceback": str(e.__traceback__)}
-
-def predict_locations_logic(locations: List[Location]):
-    if model is None or feature_columns is None:
-        
-        mock_results = []
-        for loc in locations:
-            # Simple mock logic with some variety
-            lat_factor = (loc.latitude % 1) * 100
-            lng_factor = (loc.longitude % 1) * 100
-            suitable = (lat_factor + lng_factor) % 3 > 1  
-            confidence = round(random.uniform(0.6, 0.9), 2)
-            
-            mock_results.append({
-                "latitude": loc.latitude,
-                "longitude": loc.longitude,
-                "suitable": suitable,
-                "confidence": confidence
-            })
-        return mock_results
-    
-    try:
-        new_df = pd.DataFrame([loc.dict() for loc in locations])
-        
-        # Calculate near_settlement
-        near_settlement = []
-        for _, row in new_df.iterrows():
-            point_coords = (row['latitude'], row['longitude'])
-            is_near = any(
-                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
-                for s_coords in settlement_coords
-            ) if settlement_coords else False
-            near_settlement.append(is_near)
-        
-        new_df['near_settlement'] = near_settlement
-        
-        # One-hot encode and align columns
-        X_new = pd.get_dummies(new_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
-        X_new = X_new.reindex(columns=feature_columns, fill_value=0)
-        
-        # Predict
-        predictions = model.predict(X_new)
-        probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
-        
-        # Format response
-        results = []
-        for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
-            results.append({
-                "latitude": new_df.iloc[i]['latitude'],
-                "longitude": new_df.iloc[i]['longitude'],
-                "suitable": bool(pred),
-                "confidence": round(float(prob[1]), 2) if prob[1] is not None else None
-            })
-        
-        return results
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 # For testing without model files
 @app.post("/predict-mock")

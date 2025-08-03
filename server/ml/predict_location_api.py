@@ -13,8 +13,9 @@ from joblib import load
 # --- Load model and feature columns ---
 base_path = os.path.dirname(__file__)
 try:
-    model = load(os.path.join(base_path, 'store_placement_model.joblib'))
-    feature_columns = load(os.path.join(base_path, 'feature_columns.joblib'))
+    # Go up one directory ('..') and then into the 'ml' directory
+    model = load(os.path.join(base_path, '..', 'ml', 'store_placement_model.joblib'))
+    feature_columns = load(os.path.join(base_path, '..', 'ml', 'feature_columns.joblib'))
 except Exception as e:
     print(f"Error loading model files: {e}")
     model = None
@@ -44,7 +45,8 @@ def process_geojson(geojson_path):
     
     return pd.DataFrame(data)
 
-geojson_file = os.path.join(base_path, 'my_points.geojson')
+# Point to the geojson file inside the 'ml' directory
+geojson_file = os.path.join(base_path, '..', 'ml', 'my_points.geojson')
 df_all = process_geojson(geojson_file)
 settlements = df_all[df_all['fclass'] == 'settlement'] if not df_all.empty else pd.DataFrame()
 settlement_coords = list(zip(settlements['latitude'], settlements['longitude'])) if not settlements.empty else []
@@ -133,9 +135,9 @@ def diagnose_model(request: CircleRequest):
     """Diagnose what's happening with the model predictions"""
     
     # Check if files exist
-    model_file = os.path.join(base_path, 'store_placement_model.joblib')
-    features_file = os.path.join(base_path, 'feature_columns.joblib')
-    geojson_file = os.path.join(base_path, 'my_points.geojson')
+    model_file = os.path.join(base_path, '..', 'ml', 'store_placement_model.joblib')
+    features_file = os.path.join(base_path, '..', 'ml', 'feature_columns.joblib')
+    geojson_file = os.path.join(base_path, '..', 'ml', 'my_points.geojson')
     
     diagnosis = {
         "files_exist": {

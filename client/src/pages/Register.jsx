@@ -16,7 +16,7 @@ const Register = () => {
       return; 
     }
     try {
-      await axios.post("http://localhost:5000/api/auth/register", {
+      await axios.post("https://place-it-backend.onrender.com/", {
         email,
         password,
       });

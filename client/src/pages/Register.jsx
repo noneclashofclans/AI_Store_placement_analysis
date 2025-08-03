@@ -16,7 +16,7 @@ const Register = () => {
       return; 
     }
     try {
-      await axios.post("https://place-it-backend.onrender.com/", {
+      await axios.post("https://place-it-backend.onrender.com/register", {
         email,
         password,
       });

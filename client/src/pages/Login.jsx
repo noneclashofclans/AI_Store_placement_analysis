@@ -21,7 +21,7 @@ const Login = () => {
 
     try {
       const response = await axios.post(
-        "https://place-it-backend.onrender.com/",
+        "https://place-it-backend.onrender.com/login",
         {
           email,
           password,

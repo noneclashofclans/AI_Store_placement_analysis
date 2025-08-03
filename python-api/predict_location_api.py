@@ -10,22 +10,19 @@ import math
 import random
 from joblib import load
 
-# --- Load model and feature columns (CORRECTED PATHS) ---
+# --- Load model and feature columns from the current directory ---
 base_path = os.path.dirname(__file__)
-# Go up two levels from a script in 'src/server' to the project root
-project_root = os.path.abspath(os.path.join(base_path, '..', '..'))
 
 try:
-    # Load from the project root directory
-    model = load(os.path.join(project_root, 'store_placement_model.joblib'))
-    # Assuming feature_columns is also in the root
-    feature_columns = load(os.path.join(project_root, 'feature_columns.joblib'))
+    # Load from the same directory as the script
+    model = load(os.path.join(base_path, 'store_placement_model.joblib'))
+    feature_columns = load(os.path.join(base_path, 'feature_columns.joblib'))
 except Exception as e:
     print(f"Error loading model files: {e}")
     model = None
     feature_columns = None
 
-# --- Load reference data for calculating nearby settlements (CORRECTED PATH) ---
+# --- Load reference data for calculating nearby settlements ---
 def process_geojson(geojson_path):
     data = []
     try:
@@ -60,7 +57,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for testing
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,7 +105,7 @@ def generate_points_in_circle(center_lat, center_lng, radius_km, num_points=20):
     
     return points
 
-# --- Prediction Logic (The one and only correct version) ---
+# --- Prediction Logic ---
 def predict_locations_logic(locations: List[Location]):
     if model is None or feature_columns is None:
         raise HTTPException(status_code=500, detail="Model not loaded properly")
@@ -176,8 +173,8 @@ def predict_circle(request: CircleRequest):
 def diagnose_model(request: CircleRequest):
     """Diagnose what's happening with the model predictions"""
     
-    model_file = os.path.join(project_root, 'store_placement_model.joblib')
-    features_file = os.path.join(project_root, 'feature_columns.joblib')
+    model_file = os.path.join(base_path, 'store_placement_model.joblib')
+    features_file = os.path.join(base_path, 'feature_columns.joblib')
     geojson_file_diag = os.path.join(base_path, 'ml', 'my_points.geojson')
     
     diagnosis = {
@@ -191,7 +188,7 @@ def diagnose_model(request: CircleRequest):
         "settlement_coords_count": len(settlement_coords)
     }
     
-    # ... (rest of the diagnosis logic can remain the same) ...
+    # ... (rest of the diagnosis logic remains the same) ...
     return diagnosis
 
 @app.post("/force-mixed-results")
@@ -218,4 +215,3 @@ def force_mixed_results(request: CircleRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-

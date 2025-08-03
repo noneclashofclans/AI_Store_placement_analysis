@@ -106,7 +106,7 @@ const Home = ({ searchedLocation, user }) => {
     scrollToMap();
 
     try {
-      const response = await fetch("https://ai-store-placement-analysis-b.onrender.com/predict-circle", {
+      const response = await fetch("https://ai-store-placement-analysis.onrender.com/predict-circle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

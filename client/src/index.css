@@ -1,0 +1,157 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+
+.hover-underline:hover {
+  text-decoration: underline;
+  cursor: pointer; 
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.theme-toggle-btn:hover,
+.theme-toggle-btn:focus {
+  background: rgba(0, 0, 0, 0.07);
+  outline: none;
+}
+
+/* Theme Colors */
+body.dark {
+   background: linear-gradient(to bottom, #011440, #1e293b);
+  color: #f3f4f6;
+  transition: background 0.3s, color 0.3s;
+}
+
+body.light {
+  background: linear-gradient(135deg,  #e0eafc 0%, #cfdef3 100%);
+  color: #222;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Content Transition */
+body.dark .content,
+body.light .content {
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+
+/* Navbar/Main bar transparency in dark mode */
+body.dark .main_bar {
+  opacity: 0.6 !important;
+  transition: opacity 0.3s;
+}
+
+/* Form Container */
+.form-container {
+  padding: 30px;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 360px;
+  margin: 80px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  transition: all 0.3s ease;
+}
+
+/* Light Theme Forms */
+body.light .form-container {
+  background-color: #808080;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+body.light input {
+  color: #000;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+body.light input::placeholder {
+  color: #868686;
+}
+
+body.light button {
+  background-color: #1a3e8d;
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+/* Dark Theme Forms */
+body.dark .form-container {
+  background-color: #252525;
+  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.05);
+}
+
+body.dark input {
+  color: #fff;
+  background-color: #333;
+  border: 1px solid #555;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+body.dark input::placeholder {
+  color: #aaa;
+}
+
+body.dark button {
+  background-color: #db7c34;
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+/* Text spacing */
+.space {
+  text-align: center;
+  margin: 5px 0;
+  font-size: 18px;
+}
+
+
+@media (max-width: 480px) {
+  .form-container {
+    padding: 20px;
+    margin-top: 60px;
+  }
+
+  body.light button,
+  body.dark button {
+    font-size: 14px;
+    padding: 8px;
+  }
+
+  .space {
+    font-size: 16px;
+  }
+}

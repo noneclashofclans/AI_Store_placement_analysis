@@ -21,7 +21,7 @@ const Login = () => {
 
     try {
       const response = await axios.post(
-        "https://ai-store-placement-analysis-express.onrender.com/login",
+        "https://ai-store-placement-analysis-express.onrender.com/api/auth/login",
         {
           email,
           password,

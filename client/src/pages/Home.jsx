@@ -90,7 +90,7 @@ const Home = ({ searchedLocation, user }) => {
     }
   };
 
-  // This hook handles map initialization and theme changes.
+ 
   useEffect(() => {
     // Clean up function to remove the map when the component unmounts or re-renders
     if (map.current) {
@@ -165,7 +165,7 @@ const Home = ({ searchedLocation, user }) => {
     try {
       console.log('Sending request to backend...');
       
-      let response = await fetch("http://localhost:8000/force-mixed-results", {
+      let response = await fetch("https://ai-store-placement-analysis.onrender.com/force-mixed-results", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -228,7 +228,7 @@ const Home = ({ searchedLocation, user }) => {
       
       try {
         console.log('Trying fallback single point prediction...');
-        const fallbackResponse = await fetch("http://localhost:8000/predict", {
+        const fallbackResponse = await fetch("https://ai-store-placement-analysis.onrender.com/predict", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -263,7 +263,7 @@ const Home = ({ searchedLocation, user }) => {
         }
       } catch (fallbackError) {
         console.error("Fallback prediction error:", fallbackError);
-        alert(`Error: ${error.message}\nFallback: ${fallbackError.message}\n\nPlease check if the FastAPI server is running on http://localhost:8000`);
+        alert(`Error: ${error.message}\nFallback: ${fallbackError.message}\n\nPlease check if the FastAPI server is running on https://ai-store-placement-analysis.onrender.com/`);
       }
     }
   };

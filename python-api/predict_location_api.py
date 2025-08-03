@@ -433,11 +433,11 @@ def predict_debug(locations: List[Location]):
             "settlement_coords_count": len(settlement_coords)
         }
         
-        # Predict
+        
         predictions = model.predict(X_new)
         probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
         
-        # Format response
+        
         results = []
         for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
             results.append({
@@ -459,13 +459,13 @@ def predict_debug(locations: List[Location]):
 
 def predict_locations_logic(locations: List[Location]):
     if model is None or feature_columns is None:
-        # Fallback to mock if model not available
+        
         mock_results = []
         for loc in locations:
             # Simple mock logic with some variety
             lat_factor = (loc.latitude % 1) * 100
             lng_factor = (loc.longitude % 1) * 100
-            suitable = (lat_factor + lng_factor) % 3 > 1  # Creates some variety
+            suitable = (lat_factor + lng_factor) % 3 > 1  
             confidence = round(random.uniform(0.6, 0.9), 2)
             
             mock_results.append({

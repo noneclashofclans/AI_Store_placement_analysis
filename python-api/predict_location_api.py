@@ -30,6 +30,8 @@ except Exception as e:
     model = None
     feature_columns = None
 
+# This function is now only used by the one-time preprocess_data.py script,
+# but we can keep it here for reference or future use.
 def load_and_process_geojson(file_path):
     data = []
     if not os.path.exists(file_path): return pd.DataFrame(data)
@@ -62,30 +64,25 @@ def load_and_process_geojson(file_path):
         except (IndexError, TypeError, ZeroDivisionError): continue
     return pd.DataFrame(data)
 
-# --- Data loading limited to South India region ---
-print("📂 Loading geospatial data for the 'south' zone to conserve memory...")
-data_path = os.path.join(base_path, 'ml')
 
-south_places_files = [
-    os.path.join(data_path, 'south_points_places.geojson'),
-    os.path.join(data_path, 'north_pois.geojson'), 
-    os.path.join(data_path, 'west_pois.geojson'),
-    os.path.join(data_path, 'center_pois.geojson')
-]
-south_waters_files = [ os.path.join(data_path, 'south_points_waters.geojson') ]
-south_landuse_files = [ os.path.join(data_path, 'south_landuse.geojson') ]
+# --- MODIFIED: Loading pre-processed, super-fast Feather files ---
+print("📂 Loading pre-processed Feather data files...")
+data_path = os.path.join(base_path, 'ml', 'processed_data')
 
-places_dfs = [load_and_process_geojson(f) for f in south_places_files]
-pois_dfs = places_dfs 
-waters_dfs = [load_and_process_geojson(f) for f in south_waters_files]
-landuse_dfs = [load_and_process_geojson(f) for f in south_landuse_files]
-
-places_df = pd.concat(places_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if places_dfs else pd.DataFrame()
-pois_df = pd.concat(pois_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if pois_dfs else pd.DataFrame()
-waters_df = pd.concat(waters_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if waters_dfs else pd.DataFrame()
-landuse_df = pd.concat(landuse_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if landuse_dfs else pd.DataFrame()
+try:
+    places_df = pd.read_feather(os.path.join(data_path, 'south_places_and_pois.feather'))
+    pois_df = places_df # Use the same combined dataframe for POIs
+    waters_df = pd.read_feather(os.path.join(data_path, 'south_waters.feather'))
+    landuse_df = pd.read_feather(os.path.join(data_path, 'south_landuse.feather'))
+    print("✅ Pre-processed data loaded successfully.")
+except FileNotFoundError:
+    print("❌ ERROR: Feather files not found. Please run the `preprocess_data.py` script first.")
+    # Assign empty dataframes to prevent crashing.
+    places_df, pois_df, waters_df, landuse_df = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 print(f"  - Places & POIs: {len(places_df)}, Waters: {len(waters_df)}, Landuse: {len(landuse_df)}")
+# --- END OF MODIFIED SECTION ---
+
 
 print("🔍 Building spatial indices...")
 places_tree = cKDTree(places_df[['latitude', 'longitude']]) if not places_df.empty else None
@@ -99,7 +96,6 @@ print("✅ Spatial indices built.")
 # 2. FEATURE ENGINEERING & PREDICTION LOGIC
 # =============================================================================
 
-# --- Helper functions for feature calculation ---
 def calculate_distance_to_nearest(lat, lon, tree):
     if tree is None: return 999.0
     dist, _ = tree.query([[lat, lon]], k=1)
@@ -127,7 +123,6 @@ def get_nearest_place_name(lat, lon):
         return place_name if place_name and str(place_name).strip() else "Unnamed Place"
     return "Open Area"
 
-# --- Main feature creation function ---
 def create_features_for_locations(locations_df: pd.DataFrame) -> pd.DataFrame:
     feature_list = []
     for _, row in locations_df.iterrows():
@@ -148,7 +143,6 @@ def create_features_for_locations(locations_df: pd.DataFrame) -> pd.DataFrame:
         feature_list.append(features)
     return pd.DataFrame(feature_list)
 
-# --- Main prediction logic function ---
 def predict_locations_logic(input_df: pd.DataFrame):
     if model is None: raise HTTPException(status_code=500, detail="Model not loaded.")
     features_df = create_features_for_locations(input_df)

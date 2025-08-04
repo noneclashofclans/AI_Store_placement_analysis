@@ -65,6 +65,7 @@ def load_and_process_geojson(file_path):
 # --- Data loading limited to South India region ---
 print("📂 Loading geospatial data for the 'south' zone to conserve memory...")
 data_path = os.path.join(base_path, 'ml')
+
 south_places_files = [
     os.path.join(data_path, 'south_points_places.geojson'),
     os.path.join(data_path, 'north_pois.geojson'), 
@@ -92,6 +93,7 @@ pois_tree = cKDTree(pois_df[['latitude', 'longitude']]) if not pois_df.empty els
 waters_tree = cKDTree(waters_df[['latitude', 'longitude']]) if not waters_df.empty else None
 landuse_tree = cKDTree(landuse_df[['latitude', 'longitude']]) if not landuse_df.empty else None
 print("✅ Spatial indices built.")
+
 
 # =============================================================================
 # 2. FEATURE ENGINEERING & PREDICTION LOGIC

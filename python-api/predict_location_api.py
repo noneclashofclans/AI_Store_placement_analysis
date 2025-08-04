@@ -62,19 +62,28 @@ def load_and_process_geojson(file_path):
         except (IndexError, TypeError, ZeroDivisionError): continue
     return pd.DataFrame(data)
 
-print("📂 Loading geospatial data for feature calculation...")
+# --- Data loading limited to South India region ---
+print("📂 Loading geospatial data for the 'south' zone to conserve memory...")
 data_path = os.path.join(base_path, 'ml')
-all_files = glob.glob(os.path.join(data_path, '*.geojson'))
+south_places_files = [
+    os.path.join(data_path, 'south_points_places.geojson'),
+    os.path.join(data_path, 'north_pois.geojson'), 
+    os.path.join(data_path, 'west_pois.geojson'),
+    os.path.join(data_path, 'center_pois.geojson')
+]
+south_waters_files = [ os.path.join(data_path, 'south_points_waters.geojson') ]
+south_landuse_files = [ os.path.join(data_path, 'south_landuse.geojson') ]
 
-places_dfs = [load_and_process_geojson(f) for f in all_files if 'places' in f or 'pois' in f]
-pois_dfs = [load_and_process_geojson(f) for f in all_files if 'pois' in f]
-waters_dfs = [load_and_process_geojson(f) for f in all_files if 'waters' in f]
-landuse_dfs = [load_and_process_geojson(f) for f in all_files if 'landuse' in f]
+places_dfs = [load_and_process_geojson(f) for f in south_places_files]
+pois_dfs = places_dfs 
+waters_dfs = [load_and_process_geojson(f) for f in south_waters_files]
+landuse_dfs = [load_and_process_geojson(f) for f in south_landuse_files]
 
 places_df = pd.concat(places_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if places_dfs else pd.DataFrame()
 pois_df = pd.concat(pois_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if pois_dfs else pd.DataFrame()
 waters_df = pd.concat(waters_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if waters_dfs else pd.DataFrame()
 landuse_df = pd.concat(landuse_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if landuse_dfs else pd.DataFrame()
+
 print(f"  - Places & POIs: {len(places_df)}, Waters: {len(waters_df)}, Landuse: {len(landuse_df)}")
 
 print("🔍 Building spatial indices...")
@@ -87,6 +96,7 @@ print("✅ Spatial indices built.")
 # =============================================================================
 # 2. FEATURE ENGINEERING & PREDICTION LOGIC
 # =============================================================================
+
 # --- Helper functions for feature calculation ---
 def calculate_distance_to_nearest(lat, lon, tree):
     if tree is None: return 999.0
@@ -107,23 +117,16 @@ def get_landuse_at_point(lat, lon):
         return feature.get('fclass', feature.get('landuse', 'unknown'))
     return 'unknown'
 
-# NEW FUNCTION: To find the name of the nearest place
 def get_nearest_place_name(lat, lon):
     if places_tree is None or places_df.empty: return "Unknown Area"
-    
     dist, idx = places_tree.query([[lat, lon]], k=1)
-    
-    # Only return a name if it's reasonably close (e.g., within 2km)
     if dist[0] * 111.0 <= 2.0:
         place_name = places_df.iloc[idx[0]]['name']
-        # Return the name if it's not empty, otherwise a generic name
         return place_name if place_name and str(place_name).strip() else "Unnamed Place"
-    
     return "Open Area"
 
-
+# --- Main feature creation function ---
 def create_features_for_locations(locations_df: pd.DataFrame) -> pd.DataFrame:
-    # ... (This function remains the same)
     feature_list = []
     for _, row in locations_df.iterrows():
         lat, lon = row['latitude'], row['longitude']
@@ -143,31 +146,23 @@ def create_features_for_locations(locations_df: pd.DataFrame) -> pd.DataFrame:
         feature_list.append(features)
     return pd.DataFrame(feature_list)
 
-
+# --- Main prediction logic function ---
 def predict_locations_logic(input_df: pd.DataFrame):
-    if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded. Cannot perform prediction.")
-    
+    if model is None: raise HTTPException(status_code=500, detail="Model not loaded.")
     features_df = create_features_for_locations(input_df)
     X_processed = pd.get_dummies(features_df, columns=['fclass', 'landuse_type'])
     X_aligned = X_processed.reindex(columns=feature_columns, fill_value=0)
-    
     predictions = model.predict(X_aligned)
     probabilities = model.predict_proba(X_aligned)
-    
     results = []
     for i, row in input_df.iterrows():
-        # MODIFIED: Call the new function to get the place name
         place_name = get_nearest_place_name(row['latitude'], row['longitude'])
-        
         results.append({
-            "latitude": row['latitude'],
-            "longitude": row['longitude'],
+            "latitude": row['latitude'], "longitude": row['longitude'],
             "suitable": bool(predictions[i]),
             "confidence": round(float(probabilities[i][1]), 3),
-            "place_name": place_name  # MODIFIED: Add the name to the response
+            "place_name": place_name
         })
-        
     print("✅ Prediction logic completed successfully.")
     return results
 
@@ -178,16 +173,9 @@ app = FastAPI(title="Store Placement Prediction API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
 )
-
-class Location(BaseModel):
-    latitude: float
-    longitude: float
-    fclass: str = "open_land"
 
 class CircleRequest(BaseModel):
     latitude: float

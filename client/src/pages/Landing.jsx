@@ -134,6 +134,9 @@ const Landing = () => {
         <p className="mb-0">
           &copy; {new Date().getFullYear()} <strong>Place-it!</strong> All rights reserved.
         </p>
+        <p className="mb-0 mt-1" style={{ fontSize: '0.8rem', fontStyle: 'italic', opacity: 0.7 }}>
+          * Analysis is currently optimized for and limited to the South India region.
+        </p>
       </footer>
     </div>
   );

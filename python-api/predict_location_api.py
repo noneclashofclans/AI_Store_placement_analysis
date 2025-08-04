@@ -1,78 +1,193 @@
+import os
+import json
+import glob
+import traceback
+import pandas as pd
+import numpy as np
+from joblib import load
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-import json
-import pandas as pd
-import os
-import geopy.distance
+from fastapi.middleware.cors import CORSMiddleware
+from scipy.spatial import cKDTree
 import math
 import random
-from joblib import load
 
-# --- Load model and feature columns ---
+# =============================================================================
+# 1. GLOBAL SETUP
+# =============================================================================
+print("🚀 Starting API setup...")
 base_path = os.path.dirname(__file__)
+
 try:
-    model = load(os.path.join(base_path, 'store_placement_model.joblib'))
-    feature_columns = load(os.path.join(base_path, 'feature_columns.joblib'))
+    model_path = os.path.join(base_path, 'store_placement_model.joblib')
+    columns_path = os.path.join(base_path, 'feature_columns.joblib')
+    model = load(model_path)
+    feature_columns = load(columns_path)
+    print("✅ Model and feature columns loaded successfully.")
 except Exception as e:
-    print(f"Error loading model files: {e}")
+    print(f"❌ CRITICAL ERROR: Could not load model files. {e}")
     model = None
     feature_columns = None
 
-# --- Load reference data for calculating nearby settlements ---
-def process_geojson(geojson_path):
+def load_and_process_geojson(file_path):
     data = []
+    if not os.path.exists(file_path): return pd.DataFrame(data)
     try:
-        with open(geojson_path, 'r', encoding='utf-8') as f:
-            geojson_data = json.load(f)
-        
-        for feature in geojson_data['features']:
-            props = feature.get('properties', {})
-            geom = feature.get('geometry', {})
-            
+        with open(file_path, 'r', encoding='utf-8') as f: geojson_data = json.load(f)
+    except json.JSONDecodeError: return pd.DataFrame(data)
+
+    for feature in geojson_data.get('features', []):
+        props = feature.get('properties', {})
+        geom = feature.get('geometry', {})
+        if not geom or 'type' not in geom or 'coordinates' not in geom or not geom['coordinates']: continue
+        try:
+            coords_list = geom['coordinates']
             if geom['type'] == 'Point':
-                lon, lat = geom['coordinates']
-                data.append({
-                    'latitude': lat,
-                    'longitude': lon,
-                    'fclass': props.get('fclass'),
-                    'name': props.get('name')
-                })
-    except Exception as e:
-        print(f"Error loading geojson file: {e}")
-    
+                lon, lat = coords_list[:2]
+            elif geom['type'] in ['Polygon', 'LineString', 'MultiPolygon', 'MultiLineString']:
+                while isinstance(coords_list[0][0], list): coords_list = coords_list[0]
+                if not coords_list: continue
+                lons = [c[0] for c in coords_list if isinstance(c, list) and len(c) >= 2]
+                lats = [c[1] for c in coords_list if isinstance(c, list) and len(c) >= 2]
+                if not lons or not lats: continue
+                lon, lat = sum(lons) / len(lons), sum(lats) / len(lats)
+            else: continue
+            data.append({
+                'latitude': lat, 'longitude': lon,
+                'fclass': props.get('fclass', props.get('class', 'unknown')),
+                'name': props.get('name', ''),
+                'landuse': props.get('landuse', ''), 'place': props.get('place', ''),
+            })
+        except (IndexError, TypeError, ZeroDivisionError): continue
     return pd.DataFrame(data)
 
-geojson_file = os.path.join(base_path, 'ml', 'my_points.geojson')
-df_all = process_geojson(geojson_file)
-settlements = df_all[df_all['fclass'] == 'settlement'] if not df_all.empty else pd.DataFrame()
-settlement_coords = list(zip(settlements['latitude'], settlements['longitude'])) if not settlements.empty else []
+print("📂 Loading geospatial data for feature calculation...")
+data_path = os.path.join(base_path, 'ml')
+all_files = glob.glob(os.path.join(data_path, '*.geojson'))
 
-# --- FastAPI setup ---
-app = FastAPI()
+places_dfs = [load_and_process_geojson(f) for f in all_files if 'places' in f or 'pois' in f]
+pois_dfs = [load_and_process_geojson(f) for f in all_files if 'pois' in f]
+waters_dfs = [load_and_process_geojson(f) for f in all_files if 'waters' in f]
+landuse_dfs = [load_and_process_geojson(f) for f in all_files if 'landuse' in f]
+
+places_df = pd.concat(places_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if places_dfs else pd.DataFrame()
+pois_df = pd.concat(pois_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if pois_dfs else pd.DataFrame()
+waters_df = pd.concat(waters_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if waters_dfs else pd.DataFrame()
+landuse_df = pd.concat(landuse_dfs, ignore_index=True).drop_duplicates(subset=['latitude', 'longitude']).reset_index(drop=True) if landuse_dfs else pd.DataFrame()
+print(f"  - Places & POIs: {len(places_df)}, Waters: {len(waters_df)}, Landuse: {len(landuse_df)}")
+
+print("🔍 Building spatial indices...")
+places_tree = cKDTree(places_df[['latitude', 'longitude']]) if not places_df.empty else None
+pois_tree = cKDTree(pois_df[['latitude', 'longitude']]) if not pois_df.empty else None
+waters_tree = cKDTree(waters_df[['latitude', 'longitude']]) if not waters_df.empty else None
+landuse_tree = cKDTree(landuse_df[['latitude', 'longitude']]) if not landuse_df.empty else None
+print("✅ Spatial indices built.")
+
+# =============================================================================
+# 2. FEATURE ENGINEERING & PREDICTION LOGIC
+# =============================================================================
+# --- Helper functions for feature calculation ---
+def calculate_distance_to_nearest(lat, lon, tree):
+    if tree is None: return 999.0
+    dist, _ = tree.query([[lat, lon]], k=1)
+    return dist[0] * 111.0
+
+def count_features_within_radius(lat, lon, tree, radius_km=0.5):
+    if tree is None: return 0
+    radius_deg = radius_km / 111.0
+    indices = tree.query_ball_point([lat, lon], r=radius_deg)
+    return len(indices)
+
+def get_landuse_at_point(lat, lon):
+    if landuse_tree is None or landuse_df.empty: return 'unknown'
+    dist, idx = landuse_tree.query([[lat, lon]], k=1)
+    if dist[0] * 111.0 <= 1.0:
+        feature = landuse_df.iloc[idx[0]]
+        return feature.get('fclass', feature.get('landuse', 'unknown'))
+    return 'unknown'
+
+# NEW FUNCTION: To find the name of the nearest place
+def get_nearest_place_name(lat, lon):
+    if places_tree is None or places_df.empty: return "Unknown Area"
+    
+    dist, idx = places_tree.query([[lat, lon]], k=1)
+    
+    # Only return a name if it's reasonably close (e.g., within 2km)
+    if dist[0] * 111.0 <= 2.0:
+        place_name = places_df.iloc[idx[0]]['name']
+        # Return the name if it's not empty, otherwise a generic name
+        return place_name if place_name and str(place_name).strip() else "Unnamed Place"
+    
+    return "Open Area"
+
+
+def create_features_for_locations(locations_df: pd.DataFrame) -> pd.DataFrame:
+    # ... (This function remains the same)
+    feature_list = []
+    for _, row in locations_df.iterrows():
+        lat, lon = row['latitude'], row['longitude']
+        dist_place = calculate_distance_to_nearest(lat, lon, places_tree)
+        features = {
+            'latitude': lat, 'longitude': lon,
+            'fclass': row.get('fclass', 'unknown'),
+            'landuse_type': get_landuse_at_point(lat, lon),
+            'dist_to_nearest_place': dist_place,
+            'dist_to_nearest_poi': calculate_distance_to_nearest(lat, lon, pois_tree),
+            'dist_to_nearest_water': calculate_distance_to_nearest(lat, lon, waters_tree),
+            'poi_count_500m': count_features_within_radius(lat, lon, pois_tree, 0.5),
+            'poi_count_1km': count_features_within_radius(lat, lon, pois_tree, 1.0),
+            'place_count_1km': count_features_within_radius(lat, lon, places_tree, 1.0),
+            'near_settlement': dist_place <= 2.0
+        }
+        feature_list.append(features)
+    return pd.DataFrame(feature_list)
+
+
+def predict_locations_logic(input_df: pd.DataFrame):
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded. Cannot perform prediction.")
+    
+    features_df = create_features_for_locations(input_df)
+    X_processed = pd.get_dummies(features_df, columns=['fclass', 'landuse_type'])
+    X_aligned = X_processed.reindex(columns=feature_columns, fill_value=0)
+    
+    predictions = model.predict(X_aligned)
+    probabilities = model.predict_proba(X_aligned)
+    
+    results = []
+    for i, row in input_df.iterrows():
+        # MODIFIED: Call the new function to get the place name
+        place_name = get_nearest_place_name(row['latitude'], row['longitude'])
+        
+        results.append({
+            "latitude": row['latitude'],
+            "longitude": row['longitude'],
+            "suitable": bool(predictions[i]),
+            "confidence": round(float(probabilities[i][1]), 3),
+            "place_name": place_name  # MODIFIED: Add the name to the response
+        })
+        
+    print("✅ Prediction logic completed successfully.")
+    return results
+
+# =============================================================================
+# 3. FASTAPI APP AND ENDPOINTS
+# =============================================================================
+app = FastAPI(title="Store Placement Prediction API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for testing
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/")
-def root():
-    return {"message": "Store Placement Prediction API is running 🚀", "status": "healthy"}
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "model_loaded": model is not None}
-
-# --- Request schema ---
 class Location(BaseModel):
     latitude: float
     longitude: float
-    fclass: str
+    fclass: str = "open_land"
 
 class CircleRequest(BaseModel):
     latitude: float
@@ -80,416 +195,29 @@ class CircleRequest(BaseModel):
     radius: float
     fclass: str = "open_land"
 
-# --- Generate points within circle ---
 def generate_points_in_circle(center_lat, center_lng, radius_km, num_points=20):
-    """Generate random points within a circle"""
     points = []
-    
     for _ in range(num_points):
-        # Generate random angle and distance
         angle = random.uniform(0, 2 * math.pi)
-        # Use square root for uniform distribution
         r = radius_km * math.sqrt(random.uniform(0, 1))
-        
-        # Convert to lat/lng offsets
-        lat_offset = r * math.cos(angle) / 110.54  # 1 degree lat ≈ 110.54 km
-        lng_offset = r * math.sin(angle) / (111.32 * math.cos(math.radians(center_lat)))  # 1 degree lng varies by latitude
-        
-        new_lat = center_lat + lat_offset
-        new_lng = center_lng + lng_offset
-        
-        points.append({
-            'latitude': new_lat,
-            'longitude': new_lng
-        })
-    
+        lat_offset = r * math.cos(angle) / 110.574
+        lng_offset = r * math.sin(angle) / (111.320 * math.cos(math.radians(center_lat)))
+        points.append({'latitude': center_lat + lat_offset, 'longitude': center_lng + lng_offset})
     return points
-
-# --- Prediction Logic (now a single, unified function) ---
-def predict_locations_logic(locations: List[Location]):
-    if model is None or feature_columns is None:
-        # Fallback logic if the model is not loaded
-        mock_results = []
-        for loc in locations:
-            lat_factor = (loc.latitude % 1) * 100
-            lng_factor = (loc.longitude % 1) * 100
-            suitable = (lat_factor + lng_factor) % 3 > 1  
-            confidence = round(random.uniform(0.6, 0.9), 2)
-            
-            mock_results.append({
-                "latitude": loc.latitude,
-                "longitude": loc.longitude,
-                "suitable": suitable,
-                "confidence": confidence
-            })
-        return mock_results
-    
-    try:
-        new_df = pd.DataFrame([loc.dict() for loc in locations])
-        
-        # Calculate near_settlement
-        near_settlement = []
-        for _, row in new_df.iterrows():
-            point_coords = (row['latitude'], row['longitude'])
-            is_near = any(
-                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
-                for s_coords in settlement_coords
-            ) if settlement_coords else False
-            near_settlement.append(is_near)
-        
-        new_df['near_settlement'] = near_settlement
-        
-        # One-hot encode and align columns
-        X_new = pd.get_dummies(new_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
-        X_new = X_new.reindex(columns=feature_columns, fill_value=0)
-        
-        # Predict
-        predictions = model.predict(X_new)
-        probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
-        
-        # Format response
-        results = []
-        for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
-            results.append({
-                "latitude": new_df.iloc[i]['latitude'],
-                "longitude": new_df.iloc[i]['longitude'],
-                "suitable": bool(pred),
-                "confidence": round(float(prob[1]), 2) if prob[1] is not None else None
-            })
-        
-        return results
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-# --- API Endpoints ---
-@app.post("/predict")
-def predict_locations_simple(locations: List[Location]):
-    return predict_locations_logic(locations)
-
-@app.post("/api/predict")
-def predict_locations(locations: List[Location]):
-    return predict_locations_logic(locations)
 
 @app.post("/predict-circle")
 def predict_circle(request: CircleRequest):
-    """Generate and predict multiple points within a circle"""
-    if model is None or feature_columns is None:
-        raise HTTPException(status_code=500, detail="Model not loaded properly - check if model files exist")
-    
-    # Generate points within the circle
-    points = generate_points_in_circle(request.latitude, request.longitude, request.radius)
-    
-    # Create Location objects for prediction
-    locations = [Location(latitude=p['latitude'], longitude=p['longitude'], fclass=request.fclass) for p in points]
-    
-    return predict_locations_logic(locations)
-
-@app.post("/diagnose-model")
-def diagnose_model(request: CircleRequest):
-    """Diagnose what's happening with the model predictions"""
-    
-    # Check if files exist
-    model_file = os.path.join(base_path, 'store_placement_model.joblib')
-    features_file = os.path.join(base_path, 'feature_columns.joblib')
-    geojson_file = os.path.join(base_path, 'ml', 'my_points.geojson')
-    
-    diagnosis = {
-        "files_exist": {
-            "model_file": os.path.exists(model_file),
-            "features_file": os.path.exists(features_file),
-            "geojson_file": os.path.exists(geojson_file)
-        },
-        "model_loaded": model is not None,
-        "feature_columns_loaded": feature_columns is not None,
-        "settlement_coords_count": len(settlement_coords)
-    }
-    
-    if model is not None:
-        diagnosis["model_type"] = str(type(model))
-        if hasattr(model, 'classes_'):
-            diagnosis["model_classes"] = model.classes_.tolist()
-    
-    if feature_columns is not None:
-        diagnosis["feature_columns"] = feature_columns.tolist() if hasattr(feature_columns, 'tolist') else list(feature_columns)
-        diagnosis["feature_count"] = len(feature_columns)
-    
-    # Test with a single point
-    if model is not None and feature_columns is not None:
-        try:
-            test_location = Location(
-                latitude=request.latitude,
-                longitude=request.longitude,
-                fclass=request.fclass
-            )
-            
-            # Create test dataframe
-            test_df = pd.DataFrame([test_location.dict()])
-            
-            # Calculate near_settlement
-            point_coords = (test_location.latitude, test_location.longitude)
-            is_near = any(
-                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
-                for s_coords in settlement_coords
-            ) if settlement_coords else False
-            
-            test_df['near_settlement'] = [is_near]
-            
-            diagnosis["test_input"] = {
-                "original_data": test_df.to_dict('records')[0],
-                "near_settlement": is_near
-            }
-            
-            # One-hot encode
-            X_test = pd.get_dummies(test_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
-            diagnosis["after_encoding"] = {
-                "columns": X_test.columns.tolist(),
-                "shape": X_test.shape,
-                "data": X_test.to_dict('records')[0]
-            }
-            
-            # Align with training features
-            X_test_aligned = X_test.reindex(columns=feature_columns, fill_value=0)
-            diagnosis["after_alignment"] = {
-                "columns": X_test_aligned.columns.tolist(),
-                "shape": X_test_aligned.shape,
-                "data": X_test_aligned.to_dict('records')[0],
-                "missing_features": [col for col in feature_columns if col not in X_test.columns],
-                "extra_features": [col for col in X_test.columns if col not in feature_columns]
-            }
-            
-            # Make prediction
-            prediction = model.predict(X_test_aligned)[0]
-            if hasattr(model, 'predict_proba'):
-                probabilities = model.predict_proba(X_test_aligned)[0]
-                diagnosis["prediction_result"] = {
-                    "raw_prediction": int(prediction),
-                    "prediction_bool": bool(prediction),
-                    "probabilities": probabilities.tolist(),
-                    "confidence": float(probabilities[1])
-                }
-            else:
-                diagnosis["prediction_result"] = {
-                    "raw_prediction": int(prediction),
-                    "prediction_bool": bool(prediction),
-                    "probabilities": None
-                }
-                
-        except Exception as e:
-            diagnosis["prediction_error"] = str(e)
-    
-    return diagnosis
-
-@app.post("/predict-circle-varied")
-def predict_circle_varied(request: CircleRequest):
-    """Test predictions with different fclass values to see if that affects results"""
-    if model is None or feature_columns is None:
-        raise HTTPException(status_code=500, detail="Model not loaded properly")
-    
-    # Generate points within the circle
-    points = generate_points_in_circle(request.latitude, request.longitude, request.radius, num_points=15)
-    
-    # Test different fclass values
-    fclass_options = ['open_land', 'settlement', 'commercial', 'residential', 'industrial']
-    
-    all_results = []
-    for i, point in enumerate(points):
-        # Cycle through different fclass values
-        fclass = fclass_options[i % len(fclass_options)]
-        
-        location = Location(
-            latitude=point['latitude'], 
-            longitude=point['longitude'], 
-            fclass=fclass
-        )
-        
-        result = predict_locations_logic([location])[0]
-        result['fclass_used'] = fclass  # Add this info for debugging
-        all_results.append(result)
-    
-    return all_results
-
-@app.get("/test-model")
-def test_model():
-    """Simple test to check model status"""
-    return {
-        "model_loaded": model is not None,
-        "model_type": str(type(model)) if model else None,
-        "feature_columns_loaded": feature_columns is not None,
-        "feature_count": len(feature_columns) if feature_columns is not None else 0,
-        "settlement_count": len(settlement_coords),
-        "model_classes": model.classes_.tolist() if model and hasattr(model, 'classes_') else None
-    }
-
-@app.post("/force-mixed-results")
-def force_mixed_results(request: CircleRequest):
-    """Force mixed results by modifying model predictions - for testing only"""
-    if model is None or feature_columns is None:
-        raise HTTPException(status_code=500, detail="Model not loaded properly")
-    
-    # Generate points within the circle
-    points = generate_points_in_circle(request.latitude, request.longitude, request.radius, num_points=20)
-    
-    # Create Location objects for prediction
-    locations = [Location(latitude=p['latitude'], longitude=p['longitude'], fclass=request.fclass) for p in points]
-    
-    # Get actual model predictions
     try:
-        results = predict_locations_logic(locations)
-        
-        # If all predictions are the same (all red dots), force some to be green
-        all_suitable = all(r['suitable'] for r in results)
-        all_unsuitable = all(not r['suitable'] for r in results)
-        
-        if all_unsuitable:
-            print("⚠️  Model is predicting all locations as unsuitable. Forcing some to be suitable for demo.")
-            # Force every 3rd point to be suitable
-            for i in range(0, len(results), 3):
-                results[i]['suitable'] = True
-                results[i]['confidence'] = 0.75
-                
-        elif all_suitable:
-            print("⚠️  Model is predicting all locations as suitable. Forcing some to be unsuitable for demo.")
-            # Force every 3rd point to be unsuitable  
-            for i in range(1, len(results), 3):
-                results[i]['suitable'] = False
-                results[i]['confidence'] = 0.65
-        
-        return results
-        
+        print(f"\nReceived /predict-circle request for lat:{request.latitude}, lon:{request.longitude}, rad:{request.radius}")
+        points = generate_points_in_circle(request.latitude, request.longitude, request.radius)
+        input_df = pd.DataFrame(points)
+        input_df['fclass'] = request.fclass
+        return predict_locations_logic(input_df)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+        print(f"❌ ERROR in /predict-circle endpoint: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
 
-@app.post("/analyze-model-behavior")
-def analyze_model_behavior():
-    """Analyze what the model predicts for different scenarios"""
-    if model is None or feature_columns is None:
-        return {"error": "Model not loaded"}
-    
-    # Test various scenarios
-    test_scenarios = [
-        {"lat": 28.7041, "lng": 77.1025, "fclass": "commercial", "name": "Delhi Commercial"},
-        {"lat": 19.0760, "lng": 72.8777, "fclass": "commercial", "name": "Mumbai Commercial"},
-        {"lat": 12.9716, "lng": 77.5946, "fclass": "commercial", "name": "Bangalore Commercial"},
-        {"lat": 28.7041, "lng": 77.1025, "fclass": "settlement", "name": "Delhi Settlement"},
-        {"lat": 19.0760, "lng": 72.8777, "fclass": "settlement", "name": "Mumbai Settlement"},
-        {"lat": 28.7041, "lng": 77.1025, "fclass": "open_land", "name": "Delhi Open Land"},
-        {"lat": 19.0760, "lng": 72.8777, "fclass": "open_land", "name": "Mumbai Open Land"},
-        {"lat": 28.7041, "lng": 77.1025, "fclass": "residential", "name": "Delhi Residential"},
-        {"lat": 19.0760, "lng": 72.8777, "fclass": "residential", "name": "Mumbai Residential"},
-    ]
-    
-    results = []
-    for scenario in test_scenarios:
-        try:
-            location = Location(
-                latitude=scenario["lat"],
-                longitude=scenario["lng"], 
-                fclass=scenario["fclass"]
-            )
-            
-            prediction = predict_locations_logic([location])[0]
-            prediction["scenario_name"] = scenario["name"]
-            prediction["input_fclass"] = scenario["fclass"]
-            results.append(prediction)
-            
-        except Exception as e:
-            results.append({
-                "scenario_name": scenario["name"],
-                "error": str(e)
-            })
-    
-    # Analysis
-    suitable_count = sum(1 for r in results if r.get('suitable', False))
-    total_count = len([r for r in results if 'suitable' in r])
-    
-    return {
-        "test_results": results,
-        "summary": {
-            "total_tests": total_count,
-            "suitable_predictions": suitable_count,
-            "unsuitable_predictions": total_count - suitable_count,
-            "percentage_suitable": (suitable_count / total_count * 100) if total_count > 0 else 0
-        }
-    }
-
-@app.post("/predict-debug")
-def predict_debug(locations: List[Location]):
-    """Debug endpoint to see what's happening with predictions"""
-    if model is None or feature_columns is None:
-        return {"error": "Model not loaded", "available_endpoints": ["/predict-circle-mock"]}
-    
-    try:
-        new_df = pd.DataFrame([loc.dict() for loc in locations])
-        
-        # Calculate near_settlement
-        near_settlement = []
-        for _, row in new_df.iterrows():
-            point_coords = (row['latitude'], row['longitude'])
-            is_near = any(
-                0 < geopy.distance.geodesic(point_coords, s_coords).km <= 2.0
-                for s_coords in settlement_coords
-            ) if settlement_coords else False
-            near_settlement.append(is_near)
-        
-        new_df['near_settlement'] = near_settlement
-        
-        # One-hot encode and align columns
-        X_new = pd.get_dummies(new_df[['latitude', 'longitude', 'fclass', 'near_settlement']], columns=['fclass'])
-        X_new = X_new.reindex(columns=feature_columns, fill_value=0)
-        
-        # Debug info
-        debug_info = {
-            "original_data": new_df.to_dict('records'),
-            "feature_columns": feature_columns.tolist() if hasattr(feature_columns, 'tolist') else list(feature_columns),
-            "processed_features": X_new.columns.tolist(),
-            "processed_data_sample": X_new.head().to_dict('records'),
-            "settlement_coords_count": len(settlement_coords)
-        }
-        
-        
-        predictions = model.predict(X_new)
-        probabilities = model.predict_proba(X_new) if hasattr(model, "predict_proba") else [[None, None]] * len(predictions)
-        
-        
-        results = []
-        for i, (pred, prob) in enumerate(zip(predictions, probabilities)):
-            results.append({
-                "latitude": new_df.iloc[i]['latitude'],
-                "longitude": new_df.iloc[i]['longitude'],
-                "suitable": bool(pred),
-                "confidence": round(float(prob[1]), 2) if prob[1] is not None else None,
-                "raw_prediction": int(pred),
-                "raw_probabilities": [float(p) for p in prob] if prob[0] is not None else None
-            })
-        
-        return {
-            "results": results,
-            "debug_info": debug_info
-        }
-    
-    except Exception as e:
-        return {"error": str(e), "traceback": str(e.__traceback__)}
-
-# For testing without model files
-@app.post("/predict-mock")
-def predict_mock(locations: List[Location]):
-    """Mock endpoint for testing without model files"""
-    results = []
-    for i, loc in enumerate(locations):
-        # Create a realistic mix of suitable/unsuitable locations
-        lat_factor = (loc.latitude % 1) * 100
-        lng_factor = (loc.longitude % 1) * 100
-        
-        # More sophisticated mock logic
-        score = (lat_factor + lng_factor + i * 10) % 100
-        suitable = score > 40  # 60% chance of being suitable
-        confidence = round(0.6 + (score % 30) / 100, 2)
-        
-        results.append({
-            "latitude": loc.latitude,
-            "longitude": loc.longitude,
-            "suitable": suitable,
-            "confidence": confidence
-        })
-    return results
+@app.get("/")
+def root():
+    return {"message": "Store Placement Prediction API is running 🚀"}

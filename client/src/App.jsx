@@ -22,17 +22,16 @@ const AppContent = () => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+
+    // Firebase auth state listener (for Google sign-ins)
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         localStorage.setItem("user", JSON.stringify(firebaseUser));
-      } else {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        } else {
-          setUser(null);
-        }
       }
     });
 
@@ -63,7 +62,7 @@ const AppContent = () => {
       />
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={<Login setUser={setUser} />} />  
         <Route path="/register" element={<Register />} />
         <Route path="/about" element={<About />} />
         <Route

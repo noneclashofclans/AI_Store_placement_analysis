@@ -35,16 +35,17 @@ const Landing = () => {
               className="btn btn-primary btn-lg"
               onClick={() => navigate("/login")}
               aria-label="Get Started"
-              style={{ marginRight: "6vw" }}
+              style={{ marginRight: "6vw", borderRadius: "3rem" }}
             >
               Get Started
             </button>
             <button
-              className={`btn btn-outline-secondary btn-lg${isDark ? " border-light text-light" : ""}`}
+              className={`btn btn-outline-primary btn-lg${isDark ? " border-light text-light" : ""}`}
               onClick={() => navigate("/about")}
-              aria-label="Know me!"
+              aria-label="Ab!"
+              style={{borderRadius: "3rem"}}
             >
-              Know me
+              About us
             </button>
           </div>
         </section>
@@ -88,35 +89,39 @@ const Landing = () => {
               />
             </div>
             <div className="col-md-6">
-              <h2 className="fw-bold mb-3 text-decoration-underline">Place your store in 3 easy steps:</h2>
+              <h2 className="fw-bold mb-3">Place your store in 3 easy steps:</h2>
               <ul className="list-unstyled fs-5">
-                <li className="mb-2">🔍 Search for a location.</li>
-                <li className="mb-2">📍 Enter the desired radius.</li>
-                <li className="mb-2">⚡Click on<strong>"Apply"</strong>, and get instant suggestions.</li>
+                <li className="mb-1">🔍 Search for a location.</li>
+                <li className="mb-1">📍 Enter the desired radius.</li>
+                <li className="mb-1">⚡Click on<strong>"Analyze"</strong>, and get instant suggestions.</li>
               </ul>
-              <button
+
+              <hr />
+            
+            <section className="mb-2">
+              <h2 className="h2 fw-bold mb-3 mt-2">Why Use Place-it?</h2>
+              <ul style={{fontSize: "18px"}}>
+                <li>📍 Analyze footfall and nearby facilities with real datasets</li>
+                <li>🧠 Use AI to recommend ideal store zones</li>
+                <li>📊 Visualize locations on an interactive map</li>
+                <li>🌐 Supports <strong>PAN India</strong></li>
+              </ul>
+            </section>
+
+            <button
               className="new_button btn btn-primary"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate("/register")}
               aria-label="Get Started"
               style={{borderRadius: "3rem"}}
             >
               Let's place a new store!
             </button>
-            <div style={{fontSize:"0.8rem", marginLeft:"20px"}}>*Terms and conditions apply.</div>
 
             </div>
           </div>
         </section>
       </div>
 
-      <div className="reminder" style={{
-        textAlign: "center",
-        padding: "1rem",
-        marginTop: "3rem",
-        fontSize: "0.8rem",}}>
-          <hr />
-        *This website can currently be used for predicting store placement options only in <strong>Eastern</strong>, <strong>Western</strong> and <strong>Central</strong> regions of India.
-      </div>
 
       {/* Footer */}
       <footer

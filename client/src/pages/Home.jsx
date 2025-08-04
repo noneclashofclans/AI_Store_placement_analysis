@@ -35,72 +35,59 @@ const Home = ({ searchedLocation, user }) => {
 
     return {
       type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [coords]
-      }
+      geometry: { type: "Polygon", coordinates: [coords] }
     };
   };
 
+  // This function adds the circle to the map
   const addRadiusCircle = (radiusKm) => {
     if (!map.current) return;
-
     const circleData = createCircleGeoJSON(center, radiusKm);
-
-    if (map.current.getLayer('radius-circle')) {
-      map.current.removeLayer('radius-circle');
-    }
-    if (map.current.getSource('radius-circle')) {
-      map.current.removeSource('radius-circle');
-    }
-
-    map.current.addSource('radius-circle', {
-      type: 'geojson',
-      data: circleData
-    });
-
-    map.current.addLayer({
-      id: 'radius-circle',
-      type: 'fill',
-      source: 'radius-circle',
-      paint: {
-        'fill-color': '#3b82f6',
+    
+    const circlePaint = {
+        'fill-color': theme === 'dark' ? '#14b8a6' : '#0d9488', // Teal color
         'fill-opacity': 0.2
-      }
-    });
-
-    map.current.addLayer({
-      id: 'radius-circle-border',
-      type: 'line',
-      source: 'radius-circle',
-      paint: {
-        'line-color': '#3b82f6',
+    };
+    const borderPaint = {
+        'line-color': theme === 'dark' ? '#14b8a6' : '#0d9488', // Teal color
         'line-width': 2,
         'line-opacity': 0.8
-      }
-    });
-  };
+    };
 
-  const scrollToMap = () => {
-    if (mapContainer.current) {
-      mapContainer.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+    if (map.current.getSource('radius-circle')) {
+        map.current.getSource('radius-circle').setData(circleData);
+        map.current.setPaintProperty('radius-circle', 'fill-color', circlePaint['fill-color']);
+        map.current.setPaintProperty('radius-circle-border', 'line-color', borderPaint['line-color']);
+    } else {
+      map.current.addSource('radius-circle', { type: 'geojson', data: circleData });
+      map.current.addLayer({
+        id: 'radius-circle',
+        type: 'fill',
+        source: 'radius-circle',
+        paint: circlePaint
+      });
+      map.current.addLayer({
+        id: 'radius-circle-border',
+        type: 'line',
+        source: 'radius-circle',
+        paint: borderPaint
       });
     }
   };
+  
+  const scrollToMap = () => {
+    mapContainer.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
- 
   useEffect(() => {
-    // Clean up function to remove the map when the component unmounts or re-renders
     if (map.current) {
         map.current.remove();
         map.current = null;
-    }
+    };
 
     const mapStyleUrl = theme === "dark"
-      ? "https://api.maptiler.com/maps/basic-v2/style.json?key=0OYIZWdDoSrlOX2uXSzh"
-      : "https://api.maptiler.com/maps/streets/style.json?key=0OYIZWdDoSrlOX2uXSzh";
+      ? "https://api.maptiler.com/maps/dataviz-dark/style.json?key=0OYIZWdDoSrlOX2uXSzh" 
+      : "https://api.maptiler.com/maps/dataviz-light/style.json?key=0OYIZWdDoSrlOX2uXSzh"; 
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
@@ -109,47 +96,26 @@ const Home = ({ searchedLocation, user }) => {
       zoom: 13,
     });
 
-    marker.current = new maplibregl.Marker()
-      .setLngLat([center.lng, center.lat])
-      .addTo(map.current);
-
-    // This is the cleanup function that runs before the next render.
+    marker.current = new maplibregl.Marker({color: '#14b8a6'}).setLngLat([center.lng, center.lat]).addTo(map.current);
+    
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
+      map.current?.remove();
+      map.current = null;
     };
-  }, [center.lng, center.lat, theme]);
+  }, [theme]);
 
-  // This hook handles flyTo and popup logic
+  // useEffect to handle location changes
   useEffect(() => {
     if (!map.current) return;
-
     const { lat, lng, name } = center;
-
-    map.current.flyTo({
-      center: [lng, lat],
-      zoom: 14,
-    });
-
+    map.current.flyTo({ center: [lng, lat], zoom: 14 });
     marker.current.setLngLat([lng, lat]);
-
     new maplibregl.Popup({ offset: 25 })
       .setLngLat([lng, lat])
-      .setHTML(
-        `<p style="color: ${theme === "dark" ? "#ffffff" : "#000000"}; margin: 0; background: ${theme === "dark" ? "#333333" : "#ffffff"}; padding: 5px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-          ${name}
-        </p>`
-      )
+      .setHTML(`<div style="padding: 4px 8px; color: ${theme === "dark" ? "#fff" : "#000"}; background: ${theme === 'dark' ? '#1e293b' : '#fff'}; border-radius: 4px;">${name}</div>`)
       .addTo(map.current);
-
-    if (searchedLocation) {
-      setTimeout(() => {
-        scrollToMap();
-      }, 100);
-    }
-  }, [center, theme, searchedLocation]);
+    if (searchedLocation) setTimeout(() => scrollToMap(), 1000);
+  }, [center, searchedLocation, theme]);
 
   const handleApplyClick = async () => {
     const radius = parseFloat(radiusValue);
@@ -164,12 +130,11 @@ const Home = ({ searchedLocation, user }) => {
 
     try {
       console.log('Sending request to backend...');
+      const apiUrl = "http://127.0.0.1:8000"; // Local development URL
       
-      let response = await fetch("https://ai-store-placement-analysis.onrender.com/force-mixed-results", {
+      let response = await fetch(`${apiUrl}/predict-circle`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           latitude: center.lat,
           longitude: center.lng,
@@ -186,23 +151,23 @@ const Home = ({ searchedLocation, user }) => {
       console.log('Response from backend:', results);
       setPredictionResults(results);
 
-      results.forEach((result, index) => {
-        const markerElement = document.createElement('div');
-        markerElement.className = 'prediction-marker';
-        markerElement.style.width = '12px';
-        markerElement.style.height = '12px';
-        markerElement.style.borderRadius = '50%';
-        markerElement.style.backgroundColor = result.suitable ? '#22c55e' : '#ef4444';
-        markerElement.style.border = '2px solid white';
-        markerElement.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+      results.forEach((result) => {
+        const placeName = result.place_name && result.place_name.trim() !== '' ? result.place_name : 'Analyzed Point';
 
-        const marker = new maplibregl.Marker({ element: markerElement })
+        new maplibregl.Marker({
+          color: result.suitable ? '#22c55e' : '#ef4444',
+          className: 'prediction-marker'
+        })
           .setLngLat([result.longitude, result.latitude])
           .setPopup(
-            new maplibregl.Popup({ offset: 15 }).setHTML(
-              `<div style="text-align: center; font-size: 12px; padding: 5px; color: ${theme === "dark" ? "#ffffff" : "#000000"}; background: ${theme === "dark" ? "#333333" : "#ffffff"}; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                <strong>${result.suitable ? "✅ Suitable" : "❌ Not Suitable"}</strong>
-                ${result.confidence ? `<br>Confidence: ${(result.confidence * 100).toFixed(0)}%` : ''}
+            new maplibregl.Popup({ offset: 25 }).setHTML(
+              `<div style="font-size: 13px; padding: 8px; color: ${theme === "dark" ? "#fff" : "#0f172a"}; background: ${theme === "dark" ? "#1e293b" : "#fff"}; border-radius: 5px; border: 1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'};">
+                <strong style="font-size: 14px; color: ${result.suitable ? '#22c55e' : '#ef4444'};">
+                  ${result.suitable ? "✅ Suitable" : "❌ Not Suitable"}
+                </strong>
+                <hr style="margin: 6px 0; border: none; border-top: 1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'};" />
+                <div style="font-weight: 500;">${placeName}</div>
+                ${result.confidence ? `<div style="font-size: 12px; color: #64748b;">Confidence: ${(result.confidence * 100).toFixed(0)}%</div>` : ''}
               </div>`
             )
           )
@@ -212,59 +177,20 @@ const Home = ({ searchedLocation, user }) => {
       const suitableCount = results.filter(r => r.suitable).length;
       const totalCount = results.length;
       
-      new maplibregl.Popup({ offset: 25 })
+      new maplibregl.Popup({ offset: 25, closeButton: false, closeOnClick: true })
         .setLngLat([center.lng, center.lat])
         .setHTML(
-          `<div style="text-align: center; font-size: 14px; padding: 8px; color: ${theme === "dark" ? "#ffffff" : "#000000"}; background: ${theme === "dark" ? "#333333" : "#ffffff"}; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+          `<div style="text-align: center; font-size: 14px; padding: 8px; color: ${theme === "dark" ? "#fff" : "#0f172a"}; background: ${theme === "dark" ? "#1e293b" : "#fff"}; border-radius: 5px; border: 1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'};">
             <strong>Analysis Complete!</strong><br>
-            ${suitableCount} suitable locations found<br>
-            out of ${totalCount} analyzed points
+            <span style="color: #22c55e; font-weight: bold;">${suitableCount} suitable</span> found<br>
+            out of ${totalCount} points.
           </div>`
         )
         .addTo(map.current);
 
     } catch (error) {
       console.error("Prediction error:", error);
-      
-      try {
-        console.log('Trying fallback single point prediction...');
-        const fallbackResponse = await fetch("https://ai-store-placement-analysis.onrender.com/predict", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify([
-            {
-              latitude: center.lat,
-              longitude: center.lng,
-              fclass: "open_land"
-            }
-          ])
-        });
-
-        if (fallbackResponse.ok) {
-          const result = await fallbackResponse.json();
-          const isSuitable = result[0]?.suitable;
-
-          new maplibregl.Marker({
-            color: isSuitable ? "green" : "red",
-          })
-            .setLngLat([center.lng, center.lat])
-            .setPopup(
-              new maplibregl.Popup({ offset: 25 }).setHTML(
-                `<div style="color: ${theme === "dark" ? "#ffffff" : "#000000"}; background: ${theme === "dark" ? "#333333" : "#ffffff"}; padding: 5px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                  <p>${isSuitable ? "Suitable" : "Not Suitable"}</p>
-                </div>`
-              )
-            )
-            .addTo(map.current);
-        } else {
-          throw new Error(`Fallback also failed: ${fallbackResponse.status}`);
-        }
-      } catch (fallbackError) {
-        console.error("Fallback prediction error:", fallbackError);
-        alert(`Error: ${error.message}\nFallback: ${fallbackError.message}\n\nPlease check if the FastAPI server is running on https://ai-store-placement-analysis.onrender.com/`);
-      }
+      alert(`An error occurred during prediction. Please ensure the backend server is running and check the console for details.`);
     }
   };
 
@@ -272,77 +198,73 @@ const Home = ({ searchedLocation, user }) => {
 
   return (
     <div style={{
-      backgroundColor: theme === "dark" ? "#1a202c" : "#f7fafc",
-      color: theme === "dark" ? "#e2e8f0" : "#1a202c",
+      backgroundColor: theme === "dark" ? "#0f172a" : "#f1f5f9", // slate-900 | slate-100
+      color: theme === "dark" ? "#e2e8f0" : "#1e293b", // slate-200 | slate-800
       minHeight: "100vh",
       padding: "2rem 0",
       transition: "background-color 0.3s ease",
       fontFamily: "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     }}>
-      <h1 style={{
+      <h3 style={{
         textAlign: "center",
-        fontSize: "2.25rem",
-        fontWeight: "bold",
+        fontSize: "1.25rem",
+        fontWeight: "500",
         marginBottom: "1rem",
-        color: theme === "dark" ? "#90cdf4" : "#2a4365",
+        color: theme === "dark" ? "#94a3b8" : "#475569", // slate-400 | slate-600
       }}>
         Welcome, {userEmail} 👋
-      </h1>
+      </h3>
       <p style={{
         textAlign: "center",
         fontSize: "1.125rem",
-        color: theme === "dark" ? "#a0aec0" : "#4a5568",
+        color: theme === "dark" ? "#94a3b8" : "#64748b", // slate-400 | slate-500
         marginBottom: "2rem",
       }}>
-        Start searching for a location in the search bar above.
+        Start searching for a location or use the map below to analyze an area.
       </p>
 
       <div style={{
         width: "90%",
         maxWidth: "600px",
         margin: "0 auto 40px auto",
-        backgroundColor: theme === "dark" ? "#2d3748" : "#ffffff",
-        border: `2px solid ${theme === "dark" ? "#4a5568" : "#e2e8f0"}`,
+        backgroundColor: theme === "dark" ? "#1e293b" : "#ffffff", // slate-800 | white
+        border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`, // slate-700 | slate-200
         borderRadius: "20px",
         padding: "30px",
         boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
-        position: "relative",
-        transition: "background-color 0.3s ease, border-color 0.3s ease",
       }}>
         <div style={{ textAlign: "center", marginBottom: "25px" }}>
           <h4 style={{
-            color: theme === "dark" ? "#90cdf4" : "#1e40af",
+            color: theme === "dark" ? "#5eead4" : "#0d9488", // teal-300 | teal-700
             fontSize: "1.4rem",
             fontWeight: "600",
-            textDecoration: "underline",
-            textDecorationColor: theme === "dark" ? "#63b3ed" : "#3b82f6",
           }}>
-            Enter the following details:
+            Analyze an Area
           </h4>
         </div>
 
         <div style={{ textAlign: "center" }}>
           <h5 style={{
-            color: theme === "dark" ? "#cbd5e0" : "#475569",
+            color: theme === "dark" ? "#94a3b8" : "#64748b", // slate-400 | slate-500
             fontSize: "1.1rem",
             fontWeight: "500"
           }}>
-            Enter radius:
+            Enter analysis radius (km):
           </h5>
           <input
             type="number"
-            placeholder="Enter radius in km"
+            placeholder="e.g., 2.5"
             value={radiusValue}
             onChange={(e) => setRadiusValue(e.target.value)}
             style={{
               width: "250px",
               padding: "12px 16px",
               borderRadius: "12px",
-              border: `2px solid ${theme === "dark" ? "#4a5568" : "#cbd5e1"}`,
-              backgroundColor: theme === "dark" ? "#2d3748" : "#ffffff",
-              color: theme === "dark" ? "#e2e8f0" : "#1a202c",
+              border: `2px solid ${theme === "dark" ? "#475569" : "#cbd5e1"}`, // slate-600 | slate-300
+              backgroundColor: theme === "dark" ? "#1e293b" : "#ffffff", // slate-800 | white
+              color: theme === "dark" ? "#e2e8f0" : "#1a202c", // slate-200 | slate-800
               fontSize: "1rem",
-              marginBottom: "10px",
+              marginBottom: "20px",
               transition: "all 0.3s ease",
             }}
           />
@@ -350,31 +272,32 @@ const Home = ({ searchedLocation, user }) => {
           <button
             onClick={handleApplyClick}
             style={{
-              padding: "12px 24px",
+              padding: "12px 28px",
               borderRadius: "12px",
               border: "none",
-              background: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+              background: "linear-gradient(135deg, #2dd4bf, #14b8a6)", // teal-400 to teal-500
               color: "white",
               fontSize: "1rem",
               fontWeight: "600",
               cursor: "pointer",
-              transition: "0.3s ease",
-              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.2)",
+              transition: "transform 0.2s ease",
+              boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)",
             }}
+            onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
           >
-            Apply
+            Analyze
           </button>
         </div>
       </div>
 
       <h2 style={{
         textAlign: "center",
-        color: theme === "dark" ? "#63b3ed" : "#055edc",
+        color: theme === "dark" ? "#5eead4" : "#0f766e", // teal-300 | teal-600
         marginTop: "16vh",
         marginBottom: "4vh",
         fontSize: "2rem",
         fontWeight: "bold",
-        textDecoration: "underline",
       }}>
         Your Map
       </h2>
@@ -385,17 +308,19 @@ const Home = ({ searchedLocation, user }) => {
           marginBottom: "2rem",
           fontSize: "1rem",
           padding: "1rem",
-          backgroundColor: theme === "dark" ? "#2d3748" : "#e2e8f0",
-          color: theme === "dark" ? "#e2e8f0" : "#1a202c",
+          backgroundColor: theme === "dark" ? "#1e293b" : "#ffffff", // slate-800 | white
+          color: theme === "dark" ? "#e2e8f0" : "#1e293b", // slate-200 | slate-800
           borderRadius: "12px",
           width: "90%",
           maxWidth: "600px",
-          margin: "0 auto",
+          margin: "2rem auto",
           boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          transition: "background-color 0.3s ease",
+          border: `1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'}`
         }}>
           <strong>Analysis Summary:</strong><br/>
-          {predictionResults.filter(r => r.suitable).length} suitable locations found out of {predictionResults.length} analyzed points.
+          <span style={{ color: '#22c55e', fontWeight: 'bold' }}>
+            {predictionResults.filter(r => r.suitable).length} suitable
+          </span> locations found out of {predictionResults.length} analyzed points.
         </div>
       )}
 
@@ -408,6 +333,7 @@ const Home = ({ searchedLocation, user }) => {
         borderRadius: "30px",
         overflow: "hidden",
         boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+        border: `2px solid ${theme === 'dark' ? '#334155' : 'transparent'}` // slate-700
       }}>
         <div ref={mapContainer} style={{ height: "100%", width: "100%" }} />
 
@@ -425,9 +351,9 @@ const Home = ({ searchedLocation, user }) => {
             style={{
               padding: "8px 12px",
               fontSize: "18px",
-              background: theme === "dark" ? "#4a5568" : "#535a63",
-              color: "#fff",
-              border: "none",
+              background: theme === "dark" ? "rgba(45, 55, 72, 0.8)" : "rgba(255, 255, 255, 0.8)",
+              color: theme === 'dark' ? '#fff' : '#000',
+              border: "1px solid rgba(0,0,0,0.1)",
               borderRadius: "8px",
               cursor: "pointer",
               boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
@@ -440,9 +366,9 @@ const Home = ({ searchedLocation, user }) => {
             style={{
               padding: "8px 12px",
               fontSize: "18px",
-              background: theme === "dark" ? "#4a5568" : "#535a63",
-              color: "#fff",
-              border: "none",
+              background: theme === "dark" ? "rgba(45, 55, 72, 0.8)" : "rgba(255, 255, 255, 0.8)",
+              color: theme === 'dark' ? '#fff' : '#000',
+              border: "1px solid rgba(0,0,0,0.1)",
               borderRadius: "8px",
               cursor: "pointer",
               boxShadow: "0 2px 8px rgba(0,0,0,0.2)",

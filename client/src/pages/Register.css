@@ -1,164 +1,139 @@
-.auth {
-    min-height: 50vh;           
-    width: 32%;                
-    min-width: 320px;    
-    margin: 6rem auto;       
-    padding: 48px 38px 32px 38px; 
-    background: rgba(185, 193, 206, 0.14);
-    border-radius: 32px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: #f3f4f6;
-    z-index: 2;
-    backdrop-filter: blur(24px);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.318);
-    transition: background 0.3s, box-shadow 0.3s;
-    position: relative;
+.registerUser {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
+  box-sizing: border-box;
+}
+
+.light .registerUser {
+  color: #222;
+}
+
+.dark .registerUser {
+  background: linear-gradient(to bottom, #011440, #1e293b);
+  color: #f3f4f6;
 }
 
 .reg {
-    color: rgb(132, 131, 131);
-    margin-bottom: 28px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    font-size: 2rem;
-    transition: 0.3s;
+  color: rgb(132, 131, 131);
+  font-size: 2rem;
+  margin-bottom: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.3s ease-in-out;
 }
+
 .reg:hover {
-    cursor: pointer;
-    transform: scale(1.06);
-    color: #60a5fa;
+  transform: scale(1.1);
+  color: #60a5fa;
 }
 
 .register-form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1 0 auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(15px);
+  padding: 30px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  display: flex;
+  border-radius: 50px;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 500px;
+  width: 90%;
+  box-sizing: border-box;
 }
 
-.auth input {
-    padding: 12px 14px;
-    margin-bottom: 18px;
-    border-radius: 8px;
-    border: 1.5px solid #bfc9e6;
-    background: rgba(255,255,255,0.15);
-    color: #222;
-    width: 100%;
-    font-size: 1.05rem;
-    outline: none;
-    transition: border 0.2s, box-shadow 0.2s;
-}
-.auth input:focus {
-    border: 1.5px solid #4868c0;
-    box-shadow: 0 0 0 2px #b3c6f7;
-    background: #fff;
-    color: #222;
+.register-form input {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  background-color: rgba(255, 255, 255, 0.25);
+  color: white;
+  outline: none;
+  transition: all 0.3s ease-in-out;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.auth button {
-    padding: 14px;
-    background: rgb(63, 107, 165);
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    width: 100%;
-    margin-top: 10px;
-    font-size: 1.15rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    box-shadow: 0 4px 18px 0 rgba(72,104,192,0.13);
-    transition: 
-        background 0.2s,
-        box-shadow 0.2s,
-        transform 0.18s,
-        filter 0.18s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+.register-form input::placeholder {
+  color: #ddd;
 }
 
-.auth button:hover,
-.auth button:focus {
-    background: #17307b;
-    box-shadow: 0 8px 28px 0 rgba(72,104,192,0.18);
-    transform: translateY(-2px) scale(1.04);
-    filter: brightness(1.09);
+.light .register-form input {
+  background-color: rgba(255, 255, 255, 0.75);
+  color: #111;
 }
 
-.oldUser {
-    margin-top: auto;
-    margin-bottom: 0;
-    width: 100%;
-    text-align: center;
-    font-size: 1rem;
-    color: #e0e0e0;
-    letter-spacing: 0.2px;
-    padding-bottom: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.light .register-form input::placeholder {
+  color: #555;
 }
 
-.meme {
-    margin-left: 8px;
-    color: #60a5fa;
-    cursor: pointer;
-    text-decoration: underline;
-    font-weight: 500;
-    transition: color 0.2s;
+.register-form button {
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background-color: #394e88;
+  color: white;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease-in-out;
 }
-.meme:hover {
-    color: #4868c0;
+
+.register-form button:hover {
+  transform: scale(1.05);
+  background-color: #aedf0c;
+  color: black;
+}
+
+.light .register-form button {
+  background-color: #3b5998;
+  color: white;
+}
+
+.light .register-form button:hover {
+  background-color: #5fa200;
+  color: #fff;
 }
 
 .oldUser-below {
-    width: 100%;
-    text-align: center;
-    margin-top: 32px; 
-    font-size: 1.08rem;
-    color: #ff006f;
-    letter-spacing: 0.2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+  width: 100%;
+  text-align: center;
+  font-size: 1rem;
+  color: #ff006f;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
+
 .oldUser-below .meme {
-    margin-left: 8px;
-    color: #1756c2; 
-    cursor: pointer;
-    text-decoration: underline;
-    font-weight: 500;
-    transition: color 0.2s;
+  margin-left: 8px;
+  color: #1756c2;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 500;
+  transition: color 0.2s;
 }
+
 .oldUser-below .meme:hover {
-    color: #0a357a;
+  color: #0a357a;
 }
 
-/* Dark mode support */
 .dark .oldUser-below .meme {
-    color: #60a5fa; /* Lighter blue for dark backgrounds */
+  color: #60a5fa;
 }
+
 .dark .oldUser-below .meme:hover {
-    color: #b3d8fd;
+  color: #b3d8fd;
 }
 
-@media (max-width: 900px) {
-    .auth {
-        width: 95vw;
-        min-width: unset;
-        padding: 20px 6px;
-    }
-    .reg {
-        font-size: 1.5rem;
-    }
-}
-
-.submit{
-    margin-top: 10%;
+@media (max-width: 400px) {
+  .register-form {
+    padding: 30px 20px;
+  }
 }

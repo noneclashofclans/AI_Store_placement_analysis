@@ -6,7 +6,7 @@ import { FcGoogle } from "react-icons/fc";
 import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "../firebase";
 
-const Login = () => {
+const Login = ({ setUser }) => {  // Add setUser prop
   const [email, setemail] = useState("");
   const [password, setpassword] = useState("");
   const navigate = useNavigate();
@@ -27,13 +27,15 @@ const Login = () => {
           password,
         }
       );
+      
+      // Store in localStorage
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-      alert("Login successful");
+      
+      setUser(response.data.user);
+      
+      alert("Login successfull!");
       alert(`Welcome ${response.data.user.email}`);
-      alert(
-        "Please refresh the home page after being redirected, to observe the changes."
-      );
       navigate("/home");
     } catch (error) {
       console.error("Login error:", error);
@@ -52,6 +54,10 @@ const Login = () => {
 
       // Save to localStorage for consistency
       localStorage.setItem("user", JSON.stringify({ email }));
+      
+      // ✅ UPDATE REACT STATE IMMEDIATELY
+      setUser({ email });
+      
       alert(`Welcome ${email}`);
       navigate("/home");
     } catch (error) {

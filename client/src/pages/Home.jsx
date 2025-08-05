@@ -130,7 +130,7 @@ const Home = ({ searchedLocation, user }) => {
 
     try {
       console.log('Sending request to backend...');
-      const apiUrl = "https://ai-store-placement-analysis-aianalysis.onrender.com/";
+      const apiUrl = "https://store-api-backend-new.onrender.com/";
       
       let response = await fetch(`${apiUrl}/predict-circle`, {
         method: "POST",
